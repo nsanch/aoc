@@ -34,6 +34,10 @@ print(f"Result: {part1('day22/day22-input.txt')}")
 sequence_values = {}
 
 def sequence(a,b,c,d):
+  assert -10 <= a <= 10
+  assert -10 <= b <= 10
+  assert -10 <= c <= 10
+  assert -10 <= d <= 10
   return (a+10) << 24 | (b+10) << 16 | (c+10) << 8 | (d+10)
 
 def unpack_sequence(seq):
@@ -55,7 +59,7 @@ def part2(fname):
       id += 1
 
   for r in rngs:
-    prices = []
+    prices = [r.curr() % 10]
     for i in range(2000):
       prices.append(r.next() % 10)
 
@@ -78,5 +82,5 @@ def part2(fname):
       print(id_to_price_map)
   return best
 
-#print(part2('day22/day22-input-easy2.txt'))
+print(part2('day22/day22-input-easy2.txt'))
 print(part2('day22/day22-input.txt'))
