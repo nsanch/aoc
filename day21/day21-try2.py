@@ -116,6 +116,9 @@ class Keypad(object):
 
     #return ret
 
+  def best_path_to_full_code(self, digits, cost_function):
+    return min(self.all_paths_to_full_code(digits), key=cost_function)
+
 class DirectKeypad(Keypad):
   def __init__(self, all_paths):
     super().__init__()
@@ -177,30 +180,36 @@ def part1(fname):
       print(f"Code: {code}, Len: {len(directions)}, Cost: {cost}")
   return result
 
+def cost_function(path):
+  return len(dir_keypad.all_paths_to_full_code(path)[0])
+
 def part2(fname, depth):
   with open(fname, "r") as file:
     codes = [line.strip() for line in file.readlines()]
-  codes = ["029A"]
   num_keypad = DirectKeypad(numeric_full_paths)
   dir_keypad = DirectKeypad(directional_full_paths)
-  last_keypad = num_keypad
+
   result = 0
-  for i in range(depth):
-    last_keypad = IndirectKeypad(last_keypad, dir_keypad, i+1)
-  
-    for code in codes:
-      all_paths = last_keypad.all_paths_to_full_code(code)
-      directions = all_paths[0]
-      cost = len(directions) * int(re.match(r"(\d+)", code).group(1))
-      result += cost
-      print(f"Code: {code}, Len: {len(directions)}, Cost: {cost}")
-    print(result)
+  for code in codes:
+    last_keypad = num_keypad
+    last_path = code
+    length = 0
+    for i in range(depth+1):
+      new_path = last_keypad.best_path_to_full_code(last_path, cost_function=cost_function)
+      length = len(new_path)
+      #print(f"Depth: {i+1}, Len: {len(new_path)}, Path: {new_path[:100]}")
+      #print(new_path)
+      last_path = new_path
+      last_keypad = dir_keypad
+    cost = len(last_path) * int(re.match(r"(\d+)", code).group(1))
+    result += cost
+    print(f"Code: {code}, Len: {len(last_path)}, Cost: {cost}")
+    #print(result)
   
   return result
 
 print(part1("day21/day21-input-easy.txt"))
 print(part1("day21/day21-input.txt"))
 
-print(part2("day21/day21-input.txt", depth=25))
-
-
+print(part2("day21/day21-input-easy.txt", depth=2))
+print(part2("day21/day21-input.txt", depth=2))
