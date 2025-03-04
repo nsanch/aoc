@@ -123,10 +123,17 @@ class DirectKeypad(Keypad):
   def __init__(self, all_paths):
     super().__init__()
     self.all_paths = all_paths
+    self.distance_one_digit_cache = {}
   
   def all_paths_one_digit(self, last, digit):
     return self.all_paths[(last, digit)]
 
+  def distance_one_digit(self, last, digit):
+    if (last, digit) in self.distance_one_digit_cache:
+      return self.distance_one_digit_cache[(last, digit)]
+    ret = len(self.all_paths_one_digit(last, digit)[0])
+    self.distance_one_digit_cache[(last, digit)] = ret
+    return ret
 
 class IndirectKeypad(Keypad):
   def __init__(self, underlying, interface, depth):
@@ -198,7 +205,6 @@ def part2(fname, depth):
       new_path = last_keypad.best_path_to_full_code(last_path, cost_function=cost_function)
       length = len(new_path)
       #print(f"Depth: {i+1}, Len: {len(new_path)}, Path: {new_path[:100]}")
-      #print(new_path)
       last_path = new_path
       last_keypad = dir_keypad
     cost = len(last_path) * int(re.match(r"(\d+)", code).group(1))
@@ -211,5 +217,5 @@ def part2(fname, depth):
 print(part1("day21/day21-input-easy.txt"))
 print(part1("day21/day21-input.txt"))
 
-print(part2("day21/day21-input-easy.txt", depth=2))
-print(part2("day21/day21-input.txt", depth=2))
+print(part2("day21/day21-input-easy.txt", depth=6))
+print(part2("day21/day21-input.txt", depth=6))
