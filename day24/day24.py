@@ -24,7 +24,6 @@ class Gate(object):
     self.input1 = input1
     self.input2 = input2
     self.output = output
-    self.fired = False
   
   def is_done(self):
     return self.output.has_value()
@@ -33,7 +32,6 @@ class Gate(object):
     return self.input1.has_value() and self.input2.has_value() and not self.output.has_value()
   
   def reset(self):
-    self.fired = False
     self.output.set_value(None)
 
   def __str__(self):
@@ -50,7 +48,6 @@ class AndGate(Gate):
     super().__init__(input1, input2, output)
   
   def execute(self):
-    self.fired = True
     self.output.set_value(self.input1.get_value() & self.input2.get_value())
 
 class OrGate(Gate):
@@ -58,7 +55,6 @@ class OrGate(Gate):
     super().__init__(input1, input2, output)
 
   def execute(self):
-    self.fired = True
     self.output.set_value(self.input1.get_value() | self.input2.get_value())
 
 class XorGate(Gate):
@@ -66,7 +62,6 @@ class XorGate(Gate):
     super().__init__(input1, input2, output)
   
   def execute(self):
-    self.fired = True
     self.output.set_value(self.input1.get_value() ^ self.input2.get_value())
 
 def parse_file(fname) -> tuple[dict[str, Wire], list[Gate]]:
@@ -162,32 +157,30 @@ def try_computer(wires, gates, input1_int, input2_int, expectedFunction):
   bad_output_bits = []
   output_int = execute_computer(wires, gates)
   expected = expectedFunction(input1_int, input2_int)
-  gates_fired = [g for g in gates if g.fired]
   if output_int != expected:
     for i in range(64):
       if (output_int >> i) & 1 != (expected >> i) & 1:
         bad_output_bits.append(i)
     #print(f"Got {bin(input1_int)} + {bin(input2_int)} = {bin(output_int)} instead of {bin(expected)}}")
-    return False, output_int, bad_output_bits, gates_fired
+    return False, output_int, bad_output_bits
 
-  return True, output_int, [], gates_fired
+  return True, output_int, []
 
 def is_one_bit_working(wires, gates, bit, expectedFunction):
   known_bad_output_bits = []
-  all_gates_used = []
-  result, out, bad_bits_for_zero_add, gates_zero_add = try_computer(wires, gates, 0, 0, expectedFunction)
+  result, out, bad_bits_for_zero_add = try_computer(wires, gates, 0, 0, expectedFunction)
   #if not result:
   #  print(f"0b0 + 0b0 = {out}. bad bits: {bad_bits_for_zero_add}")
 
-  result, out, bad_bits_for_one_zero, gates_one_zero = try_computer(wires, gates, 1 << bit, 0, expectedFunction)
+  result, out, bad_bits_for_one_zero = try_computer(wires, gates, 1 << bit, 0, expectedFunction)
   #if not result:
   #  print(f"{1 << bit} + 0b0 = {out}. bad bits: {bad_bits_for_one_zero}")
 
-  result, out, bad_bits_for_zero_one, gates_zero_one = try_computer(wires, gates, 0, 1 << bit, expectedFunction)
+  result, out, bad_bits_for_zero_one = try_computer(wires, gates, 0, 1 << bit, expectedFunction)
   #if not result:
   #  print(f"0b0 + {1 << bit} = {out}. bad bits: {bad_bits_for_zero_one}")
 
-  result, out, bad_bits_for_one_one, gates_one_one = try_computer(wires, gates, 1 << bit, 1 << bit, expectedFunction)
+  result, out, bad_bits_for_one_one = try_computer(wires, gates, 1 << bit, 1 << bit, expectedFunction)
   #if not result:
   #  print(f"{1 << bit} + {1 << bit} = {out}. bad bits: {bad_bits_for_one_one}")
 
@@ -343,7 +336,6 @@ def fix_computer(wires, gates, expectedFunction, known_bad_input_bits):
 
       # Find all gates upstream of x_bit and y_bit and downstream of z_bit for all bad bits.
       # try swapping all outputs one at a time.
-      to_consider = set()
       #print(f"Considering paths from input bit {bit} to output bits {bad_output_bits}")
 
       upstreams = set()
@@ -351,10 +343,7 @@ def fix_computer(wires, gates, expectedFunction, known_bad_input_bits):
       upstreams.update(find_gates_upstream_of_wire(wires[f"y{bit:02}"], gates))
       downstreams = set()
       for bb in bad_output_bits:
-        #if f"x{bb:02}" in wires:
-        #  to_consider.update(find_gates_upstream_of_wire(wires[f"x{bb:02}"], gates).union(find_gates_upstream_of_wire(wires[f"y{bb:02}"], gates)))
         downstreams.update(find_gates_downstream_of_wire(wires[f"z{bb:02}"], gates))
-      #consider = upstreams.union(downstreams)
       fixed, seqs = try_fixing_computer(wires, gates, bit, list(upstreams), list(downstreams), expectedFunction, working_swap_seqs)
 
       if fixed:
@@ -372,8 +361,6 @@ def fix_computer(wires, gates, expectedFunction, known_bad_input_bits):
 
 def part2(fname, expectedFunction):
   wires, gates = parse_file(fname)
-  #classify_gates(wires, gates)
-  #return
 
   def get_original_output(wires, gates):
     in1 = wires_to_number(wires.values(), "x")
@@ -389,8 +376,6 @@ def part2(fname, expectedFunction):
   if not is_working:
     pass
     fixed, swap_seqs = fix_computer(wires, gates, expectedFunction, bad_input_bits)
-    #fixed = False
-    #swapped_gates = []
   else:
     print("It was already working")
 
