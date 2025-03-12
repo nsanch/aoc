@@ -1,4 +1,5 @@
 import re
+import sys
 
 class Wire(object):
   def __init__(self, name, initial_value):
@@ -23,6 +24,7 @@ class Gate(object):
     self.input1 = input1
     self.input2 = input2
     self.output = output
+    self.fired = False
   
   def is_done(self):
     return self.output.has_value()
@@ -31,9 +33,11 @@ class Gate(object):
     return self.input1.has_value() and self.input2.has_value() and not self.output.has_value()
   
   def reset(self):
+    self.fired = False
     self.output.set_value(None)
 
-  #def swap_outputs(self, other):
+  def __str__(self):
+    return f"{type(self).__name__}({self.input1.name}, {self.input2.name}, {self.output.name})"
 
   def execute(self):
     pass
@@ -46,6 +50,7 @@ class AndGate(Gate):
     super().__init__(input1, input2, output)
   
   def execute(self):
+    self.fired = True
     self.output.set_value(self.input1.get_value() & self.input2.get_value())
 
 class OrGate(Gate):
@@ -53,6 +58,7 @@ class OrGate(Gate):
     super().__init__(input1, input2, output)
 
   def execute(self):
+    self.fired = True
     self.output.set_value(self.input1.get_value() | self.input2.get_value())
 
 class XorGate(Gate):
@@ -60,6 +66,7 @@ class XorGate(Gate):
     super().__init__(input1, input2, output)
   
   def execute(self):
+    self.fired = True
     self.output.set_value(self.input1.get_value() ^ self.input2.get_value())
 
 def parse_file(fname) -> tuple[dict[str, Wire], list[Gate]]:
@@ -99,36 +106,8 @@ def parse_file(fname) -> tuple[dict[str, Wire], list[Gate]]:
 
   return wires, gates
 
-def make_model_computer(bits):
-  wires = {}
-  gates = []
-  for i in range(bits):
-    wires[f"x{i:02}"] = Wire(f"x{i:02}", None)
-    wires[f"y{i:02}"] = Wire(f"y{i:02}", None)
-    wires[f"z{i:02}"] = Wire(f"z{i:02}", None)
-
-    # https://en.wikipedia.org/wiki/Adder_(electronics)
-
-    # direct sum of x + y. for bit z this goes straight to z00 because there's no carry bit.
-    wires[f"s{i:02}"] = Wire(f"s{i:02}", None)
-    if i == 0:
-      gates.append(XorGate(wires[f"x{i:02}"], wires[f"y{i:02}"], wires[f"z{i:02}"]))
-    else:
-      # sum = x ^ y ^ c
-      gates.append(XorGate(wires[f"x{i:02}"], wires[f"y{i:02}"], wires[f"s{i:02}"]))
-      gates.append(XorGate(wires[f"s{i:02}"], wires[f"c{i:02}"], wires[f"z{i:02}"]))
-
-    #c_1 is the carry bit of x_0 + y_0
-    wires[f"c{(i+1):02}"] = Wire(f"c{(i+1):02}", None)
-    gates.append(AndGate(wires[f"x{i:02}"], wires[f"y{i:02}"], wires[f"c{(i+1):02}"]))
-
-  wires[f"z{bits:02}"] = Wire(f"z{bits:02}", None)
-
-  return wires, gates
-
 def wires_to_number(all_wires, prefix):
   the_wires = sorted(list(filter(lambda w: w.name.startswith(prefix), all_wires)), key=lambda w: w.name, reverse=True)
-  #print(','.join(map(str, the_wires)))
   v = ''.join([str(w.get_value()) for w in the_wires])
   v_int = int(v, base=2)
   return v_int
@@ -138,7 +117,6 @@ def set_wires_from_number(wires, prefix, new_number):
   for bit in range(len(the_wires)):
     the_wires[bit].set_value((new_number >> bit) & 1)
   assert new_number == wires_to_number(wires, prefix)
-  #print(f"Setting {the_wires[bit].name} to {(new_number >> bit) & 1}")
 
 def execute_computer(wires, gates):
   waiting_gates = list(filter(lambda g: not g.is_done(), gates))
@@ -172,133 +150,266 @@ def find_gates_downstream_of_wire(wire, gates):
   for g in gates:
     if g.output == wire:
       ret.add(g)
-      ret.update(find_gates_upstream_of_wire(g.input1, gates))
-      ret.update(find_gates_upstream_of_wire(g.input2, gates))
+      ret.update(find_gates_downstream_of_wire(g.input1, gates))
+      ret.update(find_gates_downstream_of_wire(g.input2, gates))
   return ret
 
-def try_computer(wires, gates, input1_int, input2_int):
+def try_computer(wires, gates, input1_int, input2_int, expectedFunction):
   set_wires_from_number(wires.values(), "x", input1_int)
   set_wires_from_number(wires.values(), "y", input2_int)
   for g in gates:
     g.reset()
-  bad_bits = []
+  bad_output_bits = []
   output_int = execute_computer(wires, gates)
-  if output_int != (input1_int + input2_int):
-    expected = input1_int + input2_int
+  expected = expectedFunction(input1_int, input2_int)
+  gates_fired = [g for g in gates if g.fired]
+  if output_int != expected:
     for i in range(64):
       if (output_int >> i) & 1 != (expected >> i) & 1:
-        bad_bits.append(i)
-    #print(f"Got {bin(input1_int)} + {bin(input2_int)} = {bin(output_int)} instead of {bin(input1_int + input2_int)}")
-    return False, output_int, bad_bits
+        bad_output_bits.append(i)
+    #print(f"Got {bin(input1_int)} + {bin(input2_int)} = {bin(output_int)} instead of {bin(expected)}}")
+    return False, output_int, bad_output_bits, gates_fired
 
-  return True, output_int, []
+  return True, output_int, [], gates_fired
 
-def is_one_bit_working(wires, gates, bit):
-  known_bad_bits = []
-  result, out, bad_bits_for_zero_add = try_computer(wires, gates, 0, 0)
-  if not result:
-    print(f"0b0 + 0b0 = {out}. bad bits: {bad_bits_for_zero_add}")
+def is_one_bit_working(wires, gates, bit, expectedFunction):
+  known_bad_output_bits = []
+  all_gates_used = []
+  result, out, bad_bits_for_zero_add, gates_zero_add = try_computer(wires, gates, 0, 0, expectedFunction)
+  #if not result:
+  #  print(f"0b0 + 0b0 = {out}. bad bits: {bad_bits_for_zero_add}")
 
-  result, out, bad_bits_for_one_zero = try_computer(wires, gates, 1 << bit, 0)
-  if not result:
-    print(f"{1 << bit} + 0b0 = {out}. bad bits: {bad_bits_for_one_zero}")
-  
-  result, out, bad_bits_for_one_zero = try_computer(wires, gates, 1 << bit, 0)
-  if not result:
-    print(f"{1 << bit} + 0b0 = {out}. bad bits: {bad_bits_for_one_zero}")
+  result, out, bad_bits_for_one_zero, gates_one_zero = try_computer(wires, gates, 1 << bit, 0, expectedFunction)
+  #if not result:
+  #  print(f"{1 << bit} + 0b0 = {out}. bad bits: {bad_bits_for_one_zero}")
 
-  result, out, bad_bits_for_zero_one = try_computer(wires, gates, 0, 1 << bit)
-  if not result:
-    print(f"0b0 + {1 << bit} = {out}. bad bits: {bad_bits_for_zero_one}")
+  result, out, bad_bits_for_zero_one, gates_zero_one = try_computer(wires, gates, 0, 1 << bit, expectedFunction)
+  #if not result:
+  #  print(f"0b0 + {1 << bit} = {out}. bad bits: {bad_bits_for_zero_one}")
 
-  result, out, bad_bits_for_one_one = try_computer(wires, gates, 1 << bit, 1 << bit)
-  if not result:
-    print(f"{1 << bit} + {1 << bit} = {out}. bad bits: {bad_bits_for_one_one}")
+  result, out, bad_bits_for_one_one, gates_one_one = try_computer(wires, gates, 1 << bit, 1 << bit, expectedFunction)
+  #if not result:
+  #  print(f"{1 << bit} + {1 << bit} = {out}. bad bits: {bad_bits_for_one_one}")
 
-  known_bad_bits += bad_bits_for_zero_add
-  known_bad_bits += bad_bits_for_one_zero
-  known_bad_bits += bad_bits_for_zero_one
-  known_bad_bits += bad_bits_for_one_one
+  known_bad_output_bits += bad_bits_for_zero_add
+  known_bad_output_bits += bad_bits_for_one_zero
+  known_bad_output_bits += bad_bits_for_zero_one
+  known_bad_output_bits += bad_bits_for_one_one
 
-  return list(set(known_bad_bits))
+  return list(set(known_bad_output_bits))
 
 def swap_outputs(g1, g2):
   temp = g1.output
   g1.output = g2.output
   g2.output = temp
+  g1.reset()
+  g2.reset()
 
-def try_fixing_computer(wires, gates, bit, upstream_of_bad, downstream_of_bad):
-  print(f"Trying to fix bit {bit} by swapping from {len(upstream_of_bad)} and {len(downstream_of_bad)} gates") 
-
-  for g1 in upstream_of_bad:
-    for g2 in downstream_of_bad:
-      if g1 == g2:
+def has_cycle(gates):
+  wires_to_gates = {}
+  for g in gates:
+    if g.input1 not in wires_to_gates:
+      wires_to_gates[g.input1] = set()
+    if g.input2 not in wires_to_gates:
+      wires_to_gates[g.input2] = set()
+    wires_to_gates[g.input1].add(g)
+    wires_to_gates[g.input2].add(g)
+  for starting_point in gates:
+    to_visit = set()
+    to_visit.add(starting_point)
+    first = True
+    visited = set()
+    while len(to_visit) > 0:
+      current = to_visit.pop()
+      if not first:
+        if current == starting_point:
+          return True
+      if current in visited:
         continue
-      swap_outputs(g1, g2)
-      if is_one_bit_working(wires, gates, bit):
-        print(f"Swapping {g1.output} and {g2.output} fixed the computer")
-        return True      
-      swap_outputs(g1, g2)
+      first = False
+      gates_with_current_as_input = wires_to_gates.get(current.output, set())
+      to_visit.update(gates_with_current_as_input)
+      visited.add(current)
   return False
 
-def is_computer_working(wires, gates):
+class SwapSequence(object):
+  def __init__(self):
+    self.swaps = []
+
+  def copy_and_add_swap(self, g1, g2):
+    new_seq = SwapSequence()
+    new_seq.swaps = self.swaps.copy()
+    new_seq.swaps.append((g1, g2))
+    return new_seq
+  
+  def is_valid(self, g1, g2):
+    for s in self.swaps:
+      if g1 in s or g2 in s:
+        return False
+    return True
+  
+  def apply(self):
+    for p in self.swaps:
+      swap_outputs(p[0], p[1])
+  
+  def __str__(self):
+    return ','.join([f"{str(p[0])}->{str(p[1])}" for p in self.swaps])
+
+def try_fixing_computer(wires, gates, bit, upstream_of_bad, downstream_of_bad, expectedFunction, swap_seqs):
+  print(f"Trying to fix bit {bit} by swapping from {len(upstream_of_bad)} and {len(downstream_of_bad)} gates") 
+
+  assert not has_cycle(gates)
+
+  new_swap_seqs = []
+
+  counter = 0
+  for g1 in upstream_of_bad:
+    for g2 in downstream_of_bad:
+      counter += 1
+      if counter % 1000 == 0:
+        print(f"on iteration {counter}")
+      if g1 == g2:
+        continue
+      #print(f"Swapping {g1} and {g2}")
+
+      swap_outputs(g1, g2)
+      if has_cycle(gates):
+        #print("has cycle, skipping")
+        swap_outputs(g1, g2)
+        continue
+      fixed = len(is_one_bit_working(wires, gates, bit, expectedFunction)) == 0
+      is_fully_working_now = False
+      if len(swap_seqs) == 0:
+        is_fully_working_now, _ = is_computer_working(wires, gates, expectedFunction, bit)
+        if is_fully_working_now:
+          swap_seq = SwapSequence()
+          swap_seq = swap_seq.copy_and_add_swap(g1, g2)
+          new_swap_seqs.append(swap_seq)
+          print(f"Swapping {g1} and {g2} fixed the computer up to bit {bit}")
+      else:
+        for seq in swap_seqs:
+          if seq.is_valid(g1, g2):
+            seq.apply()
+            fully_better, _ = is_computer_working(wires, gates, expectedFunction, bit)
+            seq.apply()
+
+            if fully_better:
+              new_swap_seq = seq.copy_and_add_swap(g1, g2)
+              new_swap_seqs.append(new_swap_seq)
+              print(f"Swapping {g1} and {g2} fixed the computer up to bit {bit} as part of SwapSeq {str(new_swap_seq)}")
+              is_fully_working_now = True
+              break
+            else:
+              #print(f"Swapping {g1} and {g2} did not fix the computer up to bit {bit} when we also swapped {str(seq)}")
+              pass
+  
+      swap_outputs(g1, g2)
+  
+  return len(new_swap_seqs) > 0, new_swap_seqs
+
+def is_computer_working(wires, gates, expectedFunction, up_to_bit=None):
   num_input_bits = len(list(filter(lambda w: w.name.startswith("x"), wires.values())))
-  #print([w.name for w in wires.values()])
-  known_bad_bits = []
-  computer_working = True
+  known_bad_input_bits = []
+
   for bit in range(num_input_bits):
-    bad_bits = is_one_bit_working(wires, gates, bit)
-    known_bad_bits += bad_bits
-    if len(bad_bits) > 0:
-      computer_working = False
+    if up_to_bit is not None and bit > up_to_bit:
+      continue
+    bad_output_bits = is_one_bit_working(wires, gates, bit, expectedFunction)
+    if len(bad_output_bits) > 0:
+      known_bad_input_bits.append(bit)
+
+  return len(known_bad_input_bits) == 0, known_bad_input_bits
+
+def fix_computer(wires, gates, expectedFunction, known_bad_input_bits):
+  working_swap_seqs = []
+  computer_working = True
+  still_bad_input_bits = []
+  for bit in known_bad_input_bits:
+    swap_seqs_that_already_fixed_this_bit = []
+    for ss in working_swap_seqs:
+      ss.apply()
+      bad_output_bits = is_one_bit_working(wires, gates, bit, expectedFunction)
+      ss.apply()
+      if len(bad_output_bits) == 0:
+        print(f"Bit {bit} is already fixed by {ss}")
+        swap_seqs_that_already_fixed_this_bit.append(ss)
+    if len(swap_seqs_that_already_fixed_this_bit) > 0:
+      working_swap_seqs = swap_seqs_that_already_fixed_this_bit
+      continue
+
+    # need to recompute here because earlier swaps maybe/likely fixed this gate.
+    bad_output_bits = is_one_bit_working(wires, gates, bit, expectedFunction)
+    if len(bad_output_bits) > 0:
 
       # Find all gates upstream of x_bit and y_bit and downstream of z_bit for all bad bits.
       # try swapping all outputs one at a time.
-      bad_upstream = []
-      bad_downstream = []
-      for bb in bad_bits:
-        bad_upstream += list(find_gates_upstream_of_wire(wires[f"x{bb:02}"], gates).union(find_gates_upstream_of_wire(wires[f"y{bb:02}"], gates)))
-        bad_downstream += list(find_gates_downstream_of_wire(wires[f"z{bb:02}"], gates))
-      try_fixing_computer(wires, gates, bit, list(set(bad_upstream)), list(set(bad_downstream)))
+      to_consider = set()
+      #print(f"Considering paths from input bit {bit} to output bits {bad_output_bits}")
 
-  known_bad_bits = list(set(known_bad_bits))
-  print(f"Known bad bits: {known_bad_bits}" )
-  return len(known_bad_bits) == 0
+      upstreams = set()
+      upstreams.update(find_gates_upstream_of_wire(wires[f"x{bit:02}"], gates))
+      upstreams.update(find_gates_upstream_of_wire(wires[f"y{bit:02}"], gates))
+      downstreams = set()
+      for bb in bad_output_bits:
+        #if f"x{bb:02}" in wires:
+        #  to_consider.update(find_gates_upstream_of_wire(wires[f"x{bb:02}"], gates).union(find_gates_upstream_of_wire(wires[f"y{bb:02}"], gates)))
+        downstreams.update(find_gates_downstream_of_wire(wires[f"z{bb:02}"], gates))
+      #consider = upstreams.union(downstreams)
+      fixed, seqs = try_fixing_computer(wires, gates, bit, list(upstreams), list(downstreams), expectedFunction, working_swap_seqs)
 
-def all_possible_pairs_of_gates(gates):
-  ret = []
-  for i in range(len(gates)):
-    for j in range(i+1, len(gates)):
-      yield gates[i], gates[j]
+      if fixed:
+        print("Fixed and verified!")
+        working_swap_seqs = seqs
+      else:
+        still_bad_input_bits.append(bit)
+        computer_working = False
 
-def pairs_of_gates(gates, num):
-  if num == 1:
-    return all_possible_pairs_of_gates(gates)
-  
-  ret = []
-  pairs = all_possible_pairs_of_gates(gates)
-  sub_pairs = pairs_of_gates(gates, num-1)
-  for sp in sub_pairs:
-    for p in pairs:
-      yield sp + [p]
+  still_bad_input_bits = list(set(still_bad_input_bits))
+  working_swap_seqs = sorted(list(set(working_swap_seqs)), key=lambda p: str(p))
+  print(f"Still known bad bits: {still_bad_input_bits}" )
+  print(f"Swapped gates: {','.join([str(p) for p in working_swap_seqs])}")
+  return computer_working, working_swap_seqs
 
-def part2(fname):
+def part2(fname, expectedFunction):
   wires, gates = parse_file(fname)
-  input1_int = wires_to_number(wires.values(), "x")
-  input2_int = wires_to_number(wires.values(), "y")
-  output_int = execute_computer(wires, gates)
-  print(f"{input1_int} + {input2_int} = {input1_int + input2_int}. We get {output_int}.")
-  print(f"{bin(input1_int)} + {bin(input2_int)} = {bin(input1_int + input2_int)}. We get {bin(output_int)}.")
+  #classify_gates(wires, gates)
+  #return
 
-  if is_computer_working(wires, gates):
-    print("Computer is working")
+  def get_original_output(wires, gates):
+    in1 = wires_to_number(wires.values(), "x")
+    in2 = wires_to_number(wires.values(), "y")
+    return in1, in2, execute_computer(wires, gates)
+    
+  input1_int, input2_int, output_int = get_original_output(wires, gates)
+  print(f"{input1_int} + {input2_int} = {expectedFunction(input1_int, input2_int)}. We get {output_int}.")
+  print(f"{bin(input1_int)} + {bin(input2_int)} = {bin(expectedFunction(input1_int, input2_int))}. We get {bin(output_int)}.")
+
+  is_working, bad_input_bits = is_computer_working(wires, gates, expectedFunction)
+  print(f"Bad input bits: {bad_input_bits}")
+  if not is_working:
+    pass
+    fixed, swap_seqs = fix_computer(wires, gates, expectedFunction, bad_input_bits)
+    #fixed = False
+    #swapped_gates = []
   else:
-    print("Computer is not working")
-  #for set_of_pairs in pairs_of_gates(gates, 2):
-  #  for g1, g2 in set_of_pairs:
-      
+    print("It was already working")
 
+  if fixed:
+    print(f"Computer is working now that we swapped {[str(p) for p in swap_seqs]}")
+    for ss in swap_seqs:
+      for g in gates:
+        g.reset()
+      ss.apply()
+      input1_int, input2_int, output_int = get_original_output(wires, gates)
+      assert expectedFunction(input1_int, input2_int) == output_int
+      ss.apply()
+      swapped_outputs = []
+      for p in ss.swaps:
+        swapped_outputs.append(p[0].output.name)
+        swapped_outputs.append(p[1].output.name)
+      print(f"Working Sequence: {','.join(sorted(swapped_outputs))}")
+  else:
+    print(f"Computer is not working even though we swapped {[str(p) for p in swap_seqs]}")
 
-#part2("day24/day24-input-easy3.txt")
-#part2("day24/day24-input-easy.txt")
-part2("day24/day24-input.txt")
+part2("day24/day24-input-easy3.txt", (lambda x, y: x & y))
+part2("day24/day24-input.txt", (lambda x, y: x + y))
