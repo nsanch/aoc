@@ -78,9 +78,9 @@ func part2(fname string) int {
 }
 
 func main() {
-	fmt.Println(part1("day1-input-easy.txt"))
-	fmt.Println(part1("day1-input.txt"))
+	fmt.Println(part1("day1/day1-input-easy.txt"))
+	fmt.Println(part1("day1/day1-input.txt"))
 
-	fmt.Println(part2("day1-input-easy2.txt"))
-	fmt.Println(part2("day1-input.txt"))
+	fmt.Println(part2("day1/day1-input-easy2.txt"))
+	fmt.Println(part2("day1/day1-input.txt"))
 }
