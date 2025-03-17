@@ -1,4 +1,4 @@
-module github.com/nsanch/aoc/aoc2023/day4
+module github.com/nsanch/aoc/aoc2023/day5
 
 go 1.24.1
 

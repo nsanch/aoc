@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/nsanch/aoc/aoc2023/utils"
 )
 
 type Card struct {
@@ -44,27 +46,12 @@ func (card Card) NumMatches() int {
 	return value
 }
 
-func convertToInt(s []string) []int {
-	var ret []int
-	for _, v := range s {
-		v = strings.TrimSpace(v)
-		if v == "" {
-			continue
-		}
-		i, err := strconv.Atoi(v)
-		if err != nil {
-			log.Fatal(err)
-		}
-		ret = append(ret, i)
-	}
-	return ret
-}
-
 func readFile(fname string) []Card {
 	file, err := os.Open(fname)
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer file.Close()
 	scanner := bufio.NewScanner(file)
 	var ret []Card
 	for scanner.Scan() {
@@ -78,7 +65,10 @@ func readFile(fname string) []Card {
 		split_by_pipe := strings.Split(remainder, "|")
 		card_numbers := strings.Split(split_by_pipe[0], " ")
 		winning_numbers := strings.Split(split_by_pipe[1], " ")
-		ret = append(ret, Card{cardid: cardid, numbers: convertToInt(card_numbers), winning_numbers: convertToInt(winning_numbers)})
+		ret = append(ret, Card{
+			cardid:          cardid,
+			numbers:         utils.ConvertStringsToInts(card_numbers),
+			winning_numbers: utils.ConvertStringsToInts(winning_numbers)})
 	}
 	return ret
 }
@@ -112,9 +102,9 @@ func part2(fname string) int {
 }
 
 func main() {
-	part1("day4/day4-input-easy.txt")
-	part1("day4/day4-input.txt")
+	part1("day4-input-easy.txt")
+	part1("day4-input.txt")
 
-	part2("day4/day4-input-easy.txt")
-	part2("day4/day4-input.txt")
+	part2("day4-input-easy.txt")
+	part2("day4-input.txt")
 }
