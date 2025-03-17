@@ -32,6 +32,18 @@ func (card Card) CardValue() int {
 	return value
 }
 
+func (card Card) NumMatches() int {
+	value := 0
+	for _, number := range card.numbers {
+		for _, winning_number := range card.winning_numbers {
+			if number == winning_number {
+				value += 1
+			}
+		}
+	}
+	return value
+}
+
 func convertToInt(s []string) []int {
 	var ret []int
 	for _, v := range s {
@@ -81,11 +93,28 @@ func part1(fname string) int {
 	return result
 }
 
-func part2() {
-	//readFile("day4/day4-input-hard.txt")
+func part2(fname string) int {
+	cards := readFile(fname)
+	num_copies_of_each_card := make(map[int]int)
+	for _, card := range cards {
+		num_copies_of_each_card[card.cardid] = 1
+	}
+	total_number_of_cards := 0
+	for _, card := range cards {
+		num_copies_of_this_card := num_copies_of_each_card[card.cardid]
+		total_number_of_cards += num_copies_of_this_card
+		for i := 1; i <= card.NumMatches(); i++ {
+			num_copies_of_each_card[card.cardid+i] += num_copies_of_this_card
+		}
+	}
+	fmt.Println(total_number_of_cards)
+	return total_number_of_cards
 }
 
 func main() {
 	part1("day4/day4-input-easy.txt")
 	part1("day4/day4-input.txt")
+
+	part2("day4/day4-input-easy.txt")
+	part2("day4/day4-input.txt")
 }
