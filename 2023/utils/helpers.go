@@ -21,3 +21,18 @@ func ConvertStringsToInts(s []string) []int {
 	}
 	return ret
 }
+
+func GreatestCommonDivisor(a int, b int) int {
+	if b > a {
+		return GreatestCommonDivisor(b, a)
+	}
+	// https://en.wikipedia.org/wiki/Greatest_common_divisor#Euclidean_algorithm
+	if b == 0 {
+		return a
+	}
+	return GreatestCommonDivisor(b, a%b)
+}
+
+func LeastCommonMultiple(a int, b int) int {
+	return a * (b / GreatestCommonDivisor(a, b))
+}

@@ -6,6 +6,8 @@ import (
 	"log"
 	"os"
 	"regexp"
+
+	"github.com/nsanch/aoc/aoc2023/utils"
 )
 
 type Node struct {
@@ -57,13 +59,19 @@ func parseFile(fname string) (string, map[string]Node) {
 	return instructions, nodeMap
 }
 
-func navigateMap(nodeMap map[string]Node, instructions string) int {
-	currentNode := nodeMap["AAA"]
+func navigateMap(nodeMap map[string]Node, instructions string, startNode Node, endWithZZZ bool) int {
+	currentNode := startNode
 	numSteps := 0
 	for {
 		for _, c := range instructions {
-			if currentNode.name == "ZZZ" {
-				return numSteps
+			if endWithZZZ {
+				if currentNode.name == "ZZZ" {
+					return numSteps
+				}
+			} else {
+				if currentNode.name[len(currentNode.name)-1] == 'Z' {
+					return numSteps
+				}
 			}
 			if c == 'L' {
 				currentNode = nodeMap[currentNode.left]
@@ -77,13 +85,31 @@ func navigateMap(nodeMap map[string]Node, instructions string) int {
 	}
 }
 
+func navigateMapConcurrently(nodeMap map[string]Node, instructions string) int {
+	requiredSteps := 1
+	for _, node := range nodeMap {
+		if node.name[len(node.name)-1] == 'A' {
+			requiredSteps = utils.LeastCommonMultiple(requiredSteps, navigateMap(nodeMap, instructions, node, false))
+		}
+	}
+	return requiredSteps
+}
+
 func part1(fname string) int {
 	instructions, nodeMap := parseFile(fname)
-	return navigateMap(nodeMap, instructions)
+	return navigateMap(nodeMap, instructions, nodeMap["AAA"], true)
+}
+
+func part2(fname string) int {
+	instructions, nodeMap := parseFile(fname)
+	return navigateMapConcurrently(nodeMap, instructions)
 }
 
 func main() {
 	fmt.Println(part1("day8-input-easy.txt"))
 	fmt.Println(part1("day8-input-easy2.txt"))
 	fmt.Println(part1("day8-input.txt"))
+
+	fmt.Println(part2("day8-input-easy3.txt"))
+	fmt.Println(part2("day8-input.txt"))
 }
