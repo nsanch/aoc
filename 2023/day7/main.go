@@ -14,7 +14,8 @@ import (
 type Card int
 
 const (
-	Two Card = iota
+	Joker Card = iota
+	Two
 	Three
 	Four
 	Five
@@ -29,7 +30,7 @@ const (
 	Ace
 )
 
-func makeCardFromRune(r rune) Card {
+func makeCardFromRune(r rune, useJokerRule bool) Card {
 	switch r {
 	case '2':
 		return Two
@@ -50,7 +51,11 @@ func makeCardFromRune(r rune) Card {
 	case 'T':
 		return Ten
 	case 'J':
-		return Jack
+		if useJokerRule {
+			return Joker
+		} else {
+			return Jack
+		}
 	case 'Q':
 		return Queen
 	case 'K':
@@ -96,6 +101,8 @@ func (c Card) String() string {
 }
 
 type Hand struct {
+	// in part1, J means Jack, but in part2, J means Joker
+	useJokerRule         bool
 	cardsInOriginalOrder []Card
 	cards                []Card
 	bid                  int
@@ -269,18 +276,41 @@ func (hand Hand) GetKind() HandKind {
 	return 0
 }
 
+func (hand Hand) GetBestVersionGivenJokers() Hand {
+	potentialHands := make([]Hand, 0)
+	for replacementCard := Two; replacementCard <= Ace; replacementCard++ {
+		replacementCards := make([]Card, 0)
+		for i := range hand.cards {
+			if hand.cards[i] != Joker {
+				replacementCards = append(replacementCards, hand.cards[i])
+			} else {
+				replacementCards = append(replacementCards, replacementCard)
+			}
+		}
+		potentialHands = append(potentialHands, Hand{
+			cards:                replacementCards,
+			bid:                  hand.bid,
+			cardsInOriginalOrder: hand.cardsInOriginalOrder,
+			useJokerRule:         false}) // false to avoid infinite recursion
+	}
+	slices.SortFunc(potentialHands, CompareHands)
+	return potentialHands[len(potentialHands)-1]
+}
+
 func CompareHands(h1 Hand, h2 Hand) int {
+	if h1.useJokerRule {
+		h1 = h1.GetBestVersionGivenJokers()
+		h2 = h2.GetBestVersionGivenJokers()
+	}
 	// for some reason we compare based on the original order of the cards not based on the
 	// second/third/fourth-ranked card in the hand. this wasted a bunch of time.
-	ret := cmp.Or(
+	return cmp.Or(
 		cmp.Compare(h1.GetKind(), h2.GetKind()),
 		slices.Compare(h1.cardsInOriginalOrder, h2.cardsInOriginalOrder))
 	//		slices.Compare(h1.CardsInOrderOfRelevance(), h2.CardsInOrderOfRelevance()))
-
-	return ret
 }
 
-func parseFile(fname string) []Hand {
+func parseFile(fname string, useJokerRule bool) []Hand {
 	file, err := os.Open(fname)
 	if err != nil {
 		log.Fatal(err)
@@ -297,33 +327,38 @@ func parseFile(fname string) []Hand {
 		}
 		var cards []Card
 		for _, c := range splitUp[0] {
-			cards = append(cards, makeCardFromRune(c))
+			cards = append(cards, makeCardFromRune(c, useJokerRule))
 		}
 		origCards := make([]Card, len(cards))
 		copy(origCards, cards)
 		slices.Sort(cards)
 		slices.Reverse(cards)
-		hand := Hand{cards: cards, cardsInOriginalOrder: origCards, bid: bidInt}
+		hand := Hand{cards: cards, cardsInOriginalOrder: origCards, bid: bidInt, useJokerRule: useJokerRule}
 		hands = append(hands, hand)
 	}
 	return hands
 }
 
 func part1(fname string) int {
-	hands := parseFile(fname)
+	hands := parseFile(fname, false)
 	slices.SortFunc(hands, CompareHands)
 	//fmt.Println(hands)
 	result := 0
-	var lastHand Hand
 	for rank, hand := range hands {
 		//fmt.Println(hand.String())
 		result += hand.bid * (rank + 1)
-		if rank > 0 && CompareHands(lastHand, hand) >= 0 {
-			log.Fatalf("Hands are not sorted correctly")
-		}
-		lastHand = hand
-		//cardsInOrder := hand.CardsInOrderOfRelevance()
-		//fmt.Println(cardsInOrder, rank, hand.bid, hand.bid*rank)
+	}
+	return result
+}
+
+func part2(fname string) int {
+	hands := parseFile(fname, true)
+	slices.SortFunc(hands, CompareHands)
+	//fmt.Println(hands)
+	result := 0
+	for rank, hand := range hands {
+		//fmt.Println(hand.String())
+		result += hand.bid * (rank + 1)
 	}
 	return result
 }
@@ -331,4 +366,7 @@ func part1(fname string) int {
 func main() {
 	fmt.Println(part1("day7-input-easy.txt"))
 	fmt.Println(part1("day7-input.txt"))
+
+	fmt.Println(part2("day7-input-easy.txt"))
+	fmt.Println(part2("day7-input.txt"))
 }
