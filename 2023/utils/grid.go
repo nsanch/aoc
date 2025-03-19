@@ -40,6 +40,10 @@ func (p Position) South(maxYValue int) (bool, Position) {
 	return false, Position{}
 }
 
+func (p Position) ManhattanDistance(other Position) int {
+	return Abs(p.X-other.X) + Abs(p.Y-other.Y)
+}
+
 type Grid [][]rune
 
 func (grid Grid) ItemAt(pos Position) rune {

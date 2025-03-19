@@ -6,6 +6,13 @@ import (
 	"strings"
 )
 
+func Abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
 func ConvertStringsToInts(s []string) []int {
 	var ret []int
 	for _, v := range s {
@@ -35,4 +42,12 @@ func GreatestCommonDivisor(a int, b int) int {
 
 func LeastCommonMultiple(a int, b int) int {
 	return a * (b / GreatestCommonDivisor(a, b))
+}
+
+func MakeSetFromSlice(s []int) map[int]bool {
+	ret := make(map[int]bool)
+	for _, v := range s {
+		ret[v] = true
+	}
+	return ret
 }
