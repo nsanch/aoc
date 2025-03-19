@@ -56,7 +56,7 @@ func (graph Graph) FindCycleBFS(from utils.Position) []utils.Position {
 
 		//log.Printf("Visiting %v via path %v ", curr, pathToCurr)
 
-		toVisit = toVisit[1:]
+		toVisit = toVisit[:len(toVisit)-1]
 		if curr == from && len(pathToCurr) > 0 {
 			return pathToCurr
 		}
