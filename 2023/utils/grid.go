@@ -76,6 +76,15 @@ func (grid Grid) Equal(other Grid) bool {
 	return true
 }
 
+func (grid Grid) Clone() Grid {
+	clone := make(Grid, len(grid))
+	for y, row := range grid {
+		clone[y] = make([]rune, len(row))
+		copy(clone[y], row)
+	}
+	return clone
+}
+
 func ReadGridFromFile(fname string) Grid {
 	file, err := os.Open(fname)
 	if err != nil {
