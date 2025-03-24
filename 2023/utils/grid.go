@@ -8,67 +8,6 @@ import (
 	"strings"
 )
 
-type Direction int
-
-const (
-	North Direction = iota
-	East
-	South
-	West
-)
-
-type Position struct {
-	X int
-	Y int
-}
-
-func (p Position) East(maxXValue int) (bool, Position) {
-	if p.X < maxXValue {
-		return true, Position{X: p.X + 1, Y: p.Y}
-	}
-	return false, Position{}
-}
-
-func (p Position) West() (bool, Position) {
-	if p.X > 0 {
-		return true, Position{X: p.X - 1, Y: p.Y}
-	}
-	return false, Position{}
-}
-
-func (p Position) North() (bool, Position) {
-	if p.Y > 0 {
-		return true, Position{X: p.X, Y: p.Y - 1}
-	}
-	return false, Position{}
-}
-
-func (p Position) South(maxYValue int) (bool, Position) {
-	if p.Y < maxYValue {
-		return true, Position{X: p.X, Y: p.Y + 1}
-	}
-	return false, Position{}
-}
-
-func (p Position) FollowDirection(d Direction, maxXValue int, maxYValue int) (bool, Position) {
-	switch d {
-	case North:
-		return p.North()
-	case East:
-		return p.East(maxXValue)
-	case West:
-		return p.West()
-	case South:
-		return p.South(maxYValue)
-	}
-	log.Fatal("invalid direction", d)
-	return false, Position{}
-}
-
-func (p Position) ManhattanDistance(other Position) int {
-	return Abs(p.X-other.X) + Abs(p.Y-other.Y)
-}
-
 type Grid [][]rune
 
 func (grid Grid) ItemAt(pos Position) rune {
@@ -77,6 +16,18 @@ func (grid Grid) ItemAt(pos Position) rune {
 
 func (grid Grid) Set(pos Position, value rune) {
 	grid[pos.Y][pos.X] = value
+}
+
+func (grid Grid) Count(r rune) int {
+	count := 0
+	for _, row := range grid {
+		for _, v := range row {
+			if v == r {
+				count++
+			}
+		}
+	}
+	return count
 }
 
 func (grid Grid) Transpose() Grid {
