@@ -6,9 +6,50 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
+
+type Bounds struct {
+	minX, maxX int
+	minM, maxM int
+	minA, maxA int
+	minS, maxS int
+}
+
+func NewBounds() Bounds {
+	return Bounds{
+		minX: 1,
+		maxX: 4000,
+		minM: 1,
+		maxM: 4000,
+		minA: 1,
+		maxA: 4000,
+		minS: 1,
+		maxS: 4000,
+	}
+}
+
+func (b Bounds) NumPossibleValues() int {
+	return (b.maxX - b.minX + 1) *
+		(b.maxM - b.minM + 1) *
+		(b.maxA - b.minA + 1) *
+		(b.maxS - b.minS + 1)
+}
+
+func (b *Bounds) Clone() Bounds {
+	return Bounds{
+		minX: b.minX,
+		maxX: b.maxX,
+		minM: b.minM,
+		maxM: b.maxM,
+		minA: b.minA,
+		maxA: b.maxA,
+		minS: b.minS,
+		maxS: b.maxS,
+	}
+}
 
 type Rule struct {
 	autoAccept         bool
@@ -16,6 +57,16 @@ type Rule struct {
 	conditionIsGT      bool
 	conditionThreshold int
 	destination        string
+}
+
+func (r Rule) String() string {
+	if r.autoAccept {
+		return fmt.Sprintf("Rule: autoAccept %s", r.destination)
+	} else if r.conditionIsGT {
+		return fmt.Sprintf("Rule: %s > %d -> %s", r.conditionReads, r.conditionThreshold, r.destination)
+	} else {
+		return fmt.Sprintf("Rule: %s < %d -> %s", r.conditionReads, r.conditionThreshold, r.destination)
+	}
 }
 
 func NewRule(conditionStr string) Rule {
@@ -65,6 +116,90 @@ func (r Rule) ShouldApply(part Part) bool {
 
 func (r Rule) GetDestination() string {
 	return r.destination
+}
+
+func (r Rule) ConstrainAcceptableRange(b *Bounds) bool {
+	if r.autoAccept {
+		return true
+	}
+	var minV *int
+	var maxV *int
+	switch r.conditionReads {
+	case "x":
+		minV = &b.minX
+		maxV = &b.maxX
+	case "m":
+		minV = &b.minM
+		maxV = &b.maxM
+	case "a":
+		minV = &b.minA
+		maxV = &b.maxA
+	case "s":
+		minV = &b.minS
+		maxV = &b.maxS
+	default:
+		log.Panicf("Invalid condition reads %s", r.conditionReads)
+	}
+
+	if r.conditionIsGT {
+		if *maxV != 0 && *maxV < r.conditionThreshold {
+			// we know that V must be less than the threshold. So this rule can never pass.
+			return false
+		}
+		*minV = max(*minV, r.conditionThreshold+1)
+		return true
+	} else {
+		if *minV != 0 && *minV >= r.conditionThreshold {
+			// we know that V must be >= than the threshold. So this rule can never pass.
+			return false
+		}
+		*maxV = min(*maxV, r.conditionThreshold-1)
+		return true
+	}
+}
+
+func (r Rule) ConstrainToFailureRange(b *Bounds) bool {
+	if r.autoAccept {
+		return false
+	}
+
+	var minV *int
+	var maxV *int
+	switch r.conditionReads {
+	case "x":
+		minV = &b.minX
+		maxV = &b.maxX
+	case "m":
+		minV = &b.minM
+		maxV = &b.maxM
+	case "a":
+		minV = &b.minA
+		maxV = &b.maxA
+	case "s":
+		minV = &b.minS
+		maxV = &b.maxS
+	default:
+		log.Panicf("Invalid condition reads %s", r.conditionReads)
+	}
+
+	if r.conditionIsGT {
+		// we know we fail this rule, so V must be <= threshold.
+		if *minV != 0 && *minV > r.conditionThreshold {
+			// we know that V must be greater than the threshold. So this rule can never pass.
+			return false
+		}
+		*maxV = min(*maxV, r.conditionThreshold)
+		return true
+	} else {
+		// similar to above. we can only pass if we're >= threshold. so if max is < than threshold,
+		// this can never pass.
+		if *maxV != 0 && *maxV < r.conditionThreshold {
+			// we know that V must be less than the threshold. So this rule can never pass.
+			return false
+		}
+		*minV = max(*minV, r.conditionThreshold)
+		return true
+	}
 }
 
 type Workflow struct {
@@ -190,7 +325,60 @@ func part1(fname string) int {
 	return out
 }
 
+func WalkPaths(workflowMap map[string]Workflow, currWorkflow string, bounds Bounds) []Bounds {
+	if currWorkflow == "A" {
+		// we've reached the end-state, return the bounds.
+		return []Bounds{bounds}
+	}
+
+	ret := make([]Bounds, 0)
+	workflow := workflowMap[currWorkflow]
+	for _, rule := range workflow.rules {
+		// ignore the terminal state reject rules.
+		if rule.GetDestination() != "R" {
+			fmt.Printf("evaluating rule for success %s\n", rule.String())
+			b := bounds.Clone()
+			if !rule.ConstrainAcceptableRange(&b) {
+				fmt.Printf("rule %s cannot pass, bounds: %v\n", rule.String(), bounds)
+			} else {
+				fmt.Printf("Recursing! bounds after rule %s: %v\n", rule.String(), b)
+				ret = slices.Concat(ret, WalkPaths(workflowMap, rule.GetDestination(), b))
+				// cannot break here because there could be multiple ways in this ruleset to
+				// get to the same workflow, but we must've failed this rule to keep going, so continue
+				// with the logic below.
+			}
+		}
+
+		fmt.Printf("evaluating rule for failure %s\n", rule.String())
+		// we must fail this rule to get to the next one.
+		if !rule.ConstrainToFailureRange(&bounds) {
+			fmt.Printf("rule %s cannot fail, bounds: %v\n", rule.String(), bounds)
+			break
+		}
+		fmt.Printf("bounds after rule %s: %v\n", rule.String(), bounds)
+	}
+	return ret
+}
+
+func part2(fname string) int {
+	_, workflows := ParseFile(fname)
+	workflowMap := make(map[string]Workflow)
+	for _, workflow := range workflows {
+		workflowMap[workflow.name] = workflow
+	}
+	allPossibleBounds := WalkPaths(workflowMap, "in", NewBounds())
+	ret := 0
+	for _, bounds := range allPossibleBounds {
+		fmt.Println(bounds)
+		ret += bounds.NumPossibleValues()
+	}
+	return ret
+}
+
 func main() {
 	fmt.Println(part1("day19-input-easy.txt"))
 	fmt.Println(part1("day19-input.txt"))
+
+	fmt.Println(part2("day19-input-easy.txt"))
+	fmt.Println(part2("day19-input.txt"))
 }
