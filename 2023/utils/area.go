@@ -2,9 +2,10 @@ package utils
 
 import (
 	"fmt"
+	"iter"
 	"log"
 	"maps"
-	"slices"
+	"strings"
 )
 
 type EdgeKind int
@@ -76,29 +77,108 @@ func shouldFlipSideAtTransition(first, second EdgeKind) bool {
 	return false
 }
 
-func getGroundPointsInDirection(grid *Grid, pos Position, dir Direction) []Position {
-	var ret []Position
-	deltaX, deltaY := dir.Delta()
-	for {
-		pos.Y += deltaY
-		pos.X += deltaX
-		if pos.Y >= 0 && pos.Y < len(*grid) && pos.X >= 0 && pos.X < len((*grid)[0]) {
-			if grid.ItemAt(pos) == '.' {
-				ret = append(ret, pos)
-			} else {
-				break
-			}
-		} else {
-			break
+type SparseGrid struct {
+	pathMap map[Position]rune
+	height  int
+	width   int
+}
+
+func (g *SparseGrid) String() string {
+	if g.height > 10000 || g.width > 10000 {
+		return "Grid too large to print"
+	}
+	sb := strings.Builder{}
+	for y := 0; y < g.height; y++ {
+		for x := 0; x < g.width; x++ {
+			sb.WriteRune(g.ItemAt(Position{X: x, Y: y}))
 		}
+		sb.WriteRune('\n')
+	}
+	return sb.String()
+}
+
+func (g *SparseGrid) UnorderedPositions() iter.Seq[Position] {
+	return maps.Keys(g.pathMap)
+}
+
+func (g *SparseGrid) GetNextAlongDirection(p Position, d Direction) *Position {
+	deltaX, deltaY := d.Delta()
+	var closest *Position
+	for pos := range g.pathMap {
+		if deltaX == Sign(pos.X-p.X) && deltaY == Sign(pos.Y-p.Y) {
+			if closest == nil || p.ManhattanDistance(pos) < p.ManhattanDistance(*closest) {
+				closest = &pos
+			}
+		}
+	}
+	//fmt.Printf("closest to point %v along direction %s is point %v\n", p, d.String(), closest)
+	return closest
+}
+
+func (g *SparseGrid) ItemAt(p Position) rune {
+	if v, ok := g.pathMap[p]; ok {
+		return v
+	}
+	return '.'
+}
+
+func (g *SparseGrid) Set(p Position, v rune) {
+	if p.X >= g.width {
+		g.width = p.X + 1
+	}
+	if p.Y >= g.height {
+		g.height = p.Y + 1
+	}
+	g.pathMap[p] = v
+}
+
+func MakeSparseGridFromPath(path []Position) *SparseGrid {
+	pathMap := make(map[Position]rune)
+	ret := &SparseGrid{pathMap, 0, 0}
+	for _, p := range path {
+		ret.Set(p, '#')
 	}
 	return ret
 }
 
-func getGroundPointsInDirections(grid *Grid, pos Position, dir []Direction) []Position {
-	var ret []Position
+func getGroundPointsInDirection(grid *SparseGrid, pos Position, dir Direction) *PositionRange {
+	hasNeighbor, neighbor := pos.FollowDirection(dir, grid.width-1, grid.height-1)
+	if !hasNeighbor {
+		return nil
+	}
+
+	var ret PositionRange
+	nextNonGround := grid.GetNextAlongDirection(pos, dir)
+	if nextNonGround == nil {
+		switch dir {
+		case North:
+			ret = NewPositionRangeFromValues(Position{X: pos.X, Y: 0}, South, pos.Y)
+		case South:
+			ret = NewPositionRangeFromValues(Position{X: pos.X, Y: pos.Y + 1}, South, grid.height-pos.Y-1)
+		case East:
+			_, east := pos.East(grid.width - 1)
+			ret = NewPositionRangeFromValues(east, dir, grid.width-pos.X-1)
+		case West:
+			ret = NewPositionRangeFromValues(Position{X: 0, Y: pos.Y}, East, pos.X)
+		}
+	} else {
+		if nextNonGround.ManhattanDistance(pos) == 1 {
+			// no points to return since the very next point is also non-ground.
+			return nil
+		}
+		ret = NewPositionRangeFromValues(neighbor, dir, max(Abs(nextNonGround.X-pos.X), Abs(nextNonGround.Y-pos.Y))-1)
+	}
+	//fmt.Println("getGroundPointsInDirection", pos.String(), dir.String(), ret.String())
+	return &ret
+}
+
+func getGroundPointsInDirections(grid *SparseGrid, pos Position, dir []Direction) *PositionRanges {
+	ret := new(PositionRanges)
 	for _, d := range dir {
-		ret = slices.Concat(ret, getGroundPointsInDirection(grid, pos, d))
+		r := getGroundPointsInDirection(grid, pos, d)
+		if r != nil {
+			ret.Add(*r)
+		}
 	}
 	return ret
 }
@@ -156,11 +236,12 @@ func classifyPointOnShapeGivenThreePoints(p0 Position, p1 Position, p2 Position)
 	return ExteriorStraightNorthSouth
 }
 
-func GetInteriorPoints(grid *Grid, path []Position) []Position {
+func GetInteriorPoints(path []Position) *PositionRanges {
+	grid := MakeSparseGridFromPath(path)
 	currPointOnShape := classifyPointOnShapeGivenThreePoints(path[len(path)-1], path[0], path[1])
 	var lastPointOnShape EdgeKind
 
-	var debugGrid *Grid //grid.Clone()
+	var debugGrid *SparseGrid = MakeSparseGridFromPath(path)
 	if debugGrid != nil {
 		debugGrid.Set(path[0], []rune(currPointOnShape.String())[0])
 	}
@@ -171,6 +252,8 @@ func GetInteriorPoints(grid *Grid, path []Position) []Position {
 
 	isFlipped := false
 
+	fmt.Printf("grid height=%d, width=%d\n", grid.height, grid.width)
+
 	// start at 1 since we already handled the first point above.
 	for i := 1; i < len(path); i++ {
 		pos := path[i]
@@ -179,7 +262,6 @@ func GetInteriorPoints(grid *Grid, path []Position) []Position {
 		if debugGrid != nil {
 			debugGrid.Set(pos, []rune(currPointOnShape.String())[0])
 		}
-		//fmt.Printf("Last pipe %c at %v. Curr Pipe %c at %v\n", lastPipe, path[i-1], currPipe, pos)
 		if shouldFlipSideAtTransition(lastPointOnShape, currPointOnShape) {
 			//fmt.Println("Flipping sides")
 			isFlipped = !isFlipped
@@ -189,48 +271,48 @@ func GetInteriorPoints(grid *Grid, path []Position) []Position {
 		} else {
 			side1Direction, side2Direction = currPointOnShape.GetDirectionsOnEachSide()
 		}
-
-		pointsOnSide1 = slices.Concat(pointsOnSide1, getGroundPointsInDirections(grid, pos, side1Direction))
-		pointsOnSide2 = slices.Concat(pointsOnSide2, getGroundPointsInDirections(grid, pos, side2Direction))
+		pointsOnSide1.AddAll(getGroundPointsInDirections(grid, pos, side1Direction))
+		pointsOnSide2.AddAll(getGroundPointsInDirections(grid, pos, side2Direction))
+		//fmt.Printf("side1: %v, side2: %v\n", pointsOnSide1, pointsOnSide2)
 	}
 	if debugGrid != nil {
 		fmt.Println(debugGrid.String())
 	}
 
-	side1Map := make(map[Position]bool)
-	side2Map := make(map[Position]bool)
-	for _, p := range pointsOnSide1 {
-		side1Map[p] = true
-	}
-	for _, p := range pointsOnSide2 {
-		side2Map[p] = true
+	// Check along the border. Does side1 overlap with it? If so, return side2.
+	//pointsOnSide1.CleanAndRemoveDuplication()
+	//pointsOnSide2.CleanAndRemoveDuplication()
+
+	leftBorder := NewPositionRangeFromValues(Position{X: 0, Y: 0}, South, grid.height)
+	rightBorder := NewPositionRangeFromValues(Position{X: grid.width - 1, Y: 0}, South, grid.height)
+	topBorder := NewPositionRangeFromValues(Position{X: 0, Y: 0}, East, grid.width)
+	bottomBorder := NewPositionRangeFromValues(Position{X: 0, Y: grid.height - 1}, East, grid.width)
+	if pointsOnSide1.NumPoints() == 0 ||
+		pointsOnSide1.AreaOfIntersection(&leftBorder) > 0 ||
+		pointsOnSide1.AreaOfIntersection(&rightBorder) > 0 ||
+		pointsOnSide1.AreaOfIntersection(&topBorder) > 0 ||
+		pointsOnSide1.AreaOfIntersection(&bottomBorder) > 0 {
+		//fmt.Println(pointsOnSide2.NumPoints())
+		//fmt.Println(len(MakeSetFromSlice(pointsOnSide2.EnumerateAllPointsSlow())))
+		//fmt.Println(pointsOnSide2.String())
+		return pointsOnSide2
 	}
 
-	if debugGrid != nil {
-		fmt.Println(debugPrintSides(debugGrid, side1Map, side2Map, grid))
-	}
-
-	for _, p := range pointsOnSide1 {
-		// If any of the points on side 1 are on the edge, then we know that the inside is on side 2
-		if p.X == 0 || p.Y == 0 || p.X == len((*grid)[0])-1 || p.Y == len(*grid)-1 {
-			return slices.Collect(maps.Keys(side2Map))
-		}
-	}
-	return slices.Collect(maps.Keys(side1Map))
+	//fmt.Println(pointsOnSide1.String())
+	//fmt.Println(pointsOnSide1.NumPoints())
+	//fmt.Println(len(MakeSetFromSlice(pointsOnSide1.EnumerateAllPointsSlow())))
+	return pointsOnSide1
 }
 
 //lint:ignore U1000 Ignore unused function temporarily for debugging
-func debugPrintSides(debugGrid *Grid, side1Map map[Position]bool, side2Map map[Position]bool, grid *Grid) string {
-	for y, row := range *grid {
-		for x := range row {
-			p := Position{Y: y, X: x}
-			if side1Map[p] && side2Map[p] {
-				debugGrid.Set(p, '3')
-			} else if side1Map[p] {
-				debugGrid.Set(p, '1')
-			} else if side2Map[p] {
-				debugGrid.Set(p, '2')
-			}
+func debugPrintSides(debugGrid *SparseGrid, side1Map map[Position]bool, side2Map map[Position]bool, grid *SparseGrid) string {
+	for p := range grid.UnorderedPositions() {
+		if side1Map[p] && side2Map[p] {
+			debugGrid.Set(p, '3')
+		} else if side1Map[p] {
+			debugGrid.Set(p, '1')
+		} else if side2Map[p] {
+			debugGrid.Set(p, '2')
 		}
 	}
 	return debugGrid.String()

@@ -11,6 +11,21 @@ const (
 	West
 )
 
+func (d Direction) Reverse() Direction {
+	switch d {
+	case North:
+		return South
+	case East:
+		return West
+	case South:
+		return North
+	case West:
+		return East
+	}
+	log.Fatal("Invalid direction", int(d))
+	return 0
+}
+
 func (d Direction) String() string {
 	switch d {
 	case North:

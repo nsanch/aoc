@@ -13,6 +13,16 @@ func Abs(x int) int {
 	return x
 }
 
+func Sign(x int) int {
+	if x < 0 {
+		return -1
+	}
+	if x > 0 {
+		return 1
+	}
+	return 0
+}
+
 func ConvertStringsToInts(s []string) []int {
 	var ret []int
 	for _, v := range s {
@@ -44,8 +54,8 @@ func LeastCommonMultiple(a int, b int) int {
 	return a * (b / GreatestCommonDivisor(a, b))
 }
 
-func MakeSetFromSlice(s []int) map[int]bool {
-	ret := make(map[int]bool)
+func MakeSetFromSlice[T comparable](s []T) map[T]bool {
+	ret := make(map[T]bool)
 	for _, v := range s {
 		ret[v] = true
 	}
