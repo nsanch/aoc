@@ -241,7 +241,7 @@ func GetInteriorPoints(path []Position) *PositionRanges {
 	currPointOnShape := classifyPointOnShapeGivenThreePoints(path[len(path)-1], path[0], path[1])
 	var lastPointOnShape EdgeKind
 
-	var debugGrid *SparseGrid = MakeSparseGridFromPath(path)
+	var debugGrid *SparseGrid //= MakeSparseGridFromPath(path)
 	if debugGrid != nil {
 		debugGrid.Set(path[0], []rune(currPointOnShape.String())[0])
 	}
@@ -316,4 +316,18 @@ func debugPrintSides(debugGrid *SparseGrid, side1Map map[Position]bool, side2Map
 		}
 	}
 	return debugGrid.String()
+}
+
+func ShoelaceArea(path []Position) int {
+	// Shoelace formula
+	// https://en.wikipedia.org/wiki/Shoelace_theorem
+	// https://math.stackexchange.com/questions/1218/how-to-calculate-the-area-of-a-polygon-given-its-vertices
+	// https://www.cuemath.com/geometry/shoelace-theorem/
+	area := 0
+	for i := range path {
+		j := (i + 1) % len(path)
+		area += path[i].X * path[j].Y
+		area -= path[j].X * path[i].Y
+	}
+	return Abs(area) / 2
 }

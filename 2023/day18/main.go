@@ -121,6 +121,64 @@ func part1(fname string) int {
 	return utils.GetInteriorPoints(path).NumPoints() + len(path)
 }
 
+func processInstructions_Shoelace(instructions []Instruction) []utils.Position {
+	type GridlessPosition struct {
+		x int
+		y int
+	}
+	minX, maxX, minY, maxY := 0, 0, 0, 0
+	currPos := GridlessPosition{0, 0}
+	for _, instruction := range instructions {
+		switch instruction.direction {
+		case utils.North:
+			currPos.y -= instruction.distance
+		case utils.South:
+			currPos.y += instruction.distance
+		case utils.East:
+			currPos.x += instruction.distance
+		case utils.West:
+			currPos.x -= instruction.distance
+		}
+		if minX > currPos.x {
+			minX = currPos.x
+		}
+		if maxX < currPos.x {
+			maxX = currPos.x
+		}
+		if minY > currPos.y {
+			minY = currPos.y
+		}
+		if maxY < currPos.y {
+			maxY = currPos.y
+		}
+	}
+	currPos2 := utils.Position{X: 0, Y: 0}
+	path := make([]utils.Position, 0)
+	path = append(path, currPos2)
+	fmt.Println(currPos2)
+	for _, instruction := range instructions {
+		switch instruction.direction {
+		case utils.North:
+			currPos2.Y += instruction.distance
+		case utils.South:
+			currPos2.Y -= instruction.distance
+		case utils.East:
+			currPos2.X += instruction.distance
+		case utils.West:
+			currPos2.X -= instruction.distance
+		}
+		fmt.Println(currPos2)
+		path = append(path, currPos2)
+	}
+	return path
+}
+
+func part1_Shoelace(fname string) int {
+	instructions := parseFile(fname)
+	path := processInstructions(instructions)
+	return utils.ShoelaceArea(path) + (len(path) / 2) + 1
+}
+
 func part2(fname string) int {
 	instructions := parseFile(fname)
 	for idx := range instructions {
@@ -150,7 +208,9 @@ func part2(fname string) int {
 	if path[len(path)-1] == path[0] {
 		path = path[:len(path)-1]
 	}
-	return utils.GetInteriorPoints(path).NumPoints() + len(path)
+	return utils.ShoelaceArea(path) + (len(path) / 2) + 1
+
+	// return utils.GetInteriorPoints(path).NumPoints() + len(path)
 }
 
 func main() {
@@ -166,7 +226,11 @@ func main() {
 	}
 
 	fmt.Println(part1("day18-input-easy.txt"))
-	fmt.Println(part1("day18-input.txt"))
+	//fmt.Println(part1("day18-input.txt"))
 
-	//fmt.Println(part2("day18-input-easy.txt"))
+	fmt.Println(part1_Shoelace("day18-input-easy.txt"))
+	fmt.Println(part1_Shoelace("day18-input.txt"))
+
+	fmt.Println(part2("day18-input-easy.txt"))
+	fmt.Println(part2("day18-input.txt"))
 }
